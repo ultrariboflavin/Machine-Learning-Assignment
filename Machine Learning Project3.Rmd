@@ -1,0 +1,202 @@
+---
+title: "Machine Learning Prediction Assignment"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Summary
+The goal of this machine learning assignment is to predict in what fashion bicep curls were completed based on data from accelerometers placed in four different places on the test subjects' bodies. To complete this task, some exploratory data analysis was performed and then a methodology was formed for model development. Three different models were developed and tested for accuracy. The final result was a model that used 13 predictors and has an estimated accuracy of 98.3%, scoring 20/20 on test set.
+
+
+## Data Exploration
+The training data set consists of 160 distinct columns of data, mostly measurements from accelerometers that were placed on four different locations on the test subjects: the forearm, the arm, the belt and the dumbbell. The data also contains the subject's name, various time stamps and the classe, which is an indicator of whether the bicep curl was performed properly ("A") or incorrectly in one of four different ways ("B","C","D", and "E").
+
+Caution should be taken when working with this large dataset as using too many of these variables could lead to both overfitting and computational performance issues. An initial assessment of this data reveals that many of the data variables are sparse in nature and have missing values. In fact, only 59 columns have more than 20% data completeness.
+
+
+## Model Development Methodology
+The first step in developing models is to split the training data into training and test sets:
+
+```{r,eval=FALSE}
+traindata <- read.csv("pml-training.csv")
+testdata <- read.csv("pml-testing.csv")
+inTrain <- createDataPartition(y=traindata$classe,p=0.7, list=FALSE)
+training <- traindata[inTrain,]
+testing <- traindata[-inTrain,]
+
+```
+
+All models will be built using the training set, with the testing set being held out until final validation of the models.
+
+The Random Forest approach is used for each of the models. This method was chosen for its typical high accuracy rates. Because random forests can be computationally intensive, care should be taken in variable selection.
+
+Model development is done through an incremental approach, beginning with a very simple and low accuracy model and expanding to a final model that is both more complex and more accurate. By proceeding in this fashion, intuition of the relative merits of different input variables can be built. If we were to instead start by using most or all of the variables, we would have a model that could be both non-intuitive and computationally unwieldy.
+
+For each model, we apply cross-validation with 10 resampling iterations and 3 complete sets of folds to compute:
+
+```{r,eval=FALSE}
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
+
+```
+
+A final note on the coding of the model formula is in order. Because some of the models tested involve many input variables, we define the formula using a for loop in R. For example, the code below creates a formula using columns 2, 8, 9 and 10 as predictors:
+
+```{r,eval=FALSE}
+colnames <- names(training)
+xnam <- colnames[2]
+for(i in 8:10) {
+        xnam <- paste(xnam," + ",colnames[i])
+}
+myformula <- as.formula(paste("classe ~ ",xnam))
+
+```
+
+
+## Approach 1: One Location
+
+The first model uses just three measurements from just one of the sensor locations: pitch, yaw and roll at the belt. There are several other accelerometer measurements that could also be included, but a simple model is used to help build intuition. Here is the model and the resulting confusion matrix:
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+setwd("C:/Users/rwarr/Documents/Coursera")
+traindata <- read.csv("pml-training.csv")
+testdata <- read.csv("pml-testing.csv")
+library(ggplot2)
+library(caret)
+set.seed(1234)
+inTrain <- createDataPartition(y=traindata$classe,p=0.7, list=FALSE)
+training <- traindata[inTrain,]
+testing <- traindata[-inTrain,]
+```
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+colnames <- names(training)
+colcounts <- colSums(training > 0 | training <0)
+xnam <- colnames[8]
+for(i in 9:10) {
+        if (colcounts[i]>11000 & !is.na(colcounts[i])){
+                xnam <- paste(xnam," + ",colnames[i])
+        }
+        
+}
+myformula <- as.formula(paste("classe ~ ",xnam))
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
+```
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+set.seed(123)
+model1 <- train(myformula,model="rf",data=training,trcontrol=control)
+pred <- predict(model1,testing)
+```
+
+```{r}
+myformula
+
+```
+
+```{r,eval=FALSE,warning=FALSE,message=FALSE}
+set.seed(123)
+model1 <- train(myformula,model="rf",data=training,trcontrol=control)
+pred <- predict(model1,testing)
+table(pred,testing$classe)
+```
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+table(pred,testing$classe)
+```
+
+The accuracy of this first model is 84.7%.
+
+## Approach 2: One Location and User
+The second model adds the user as a prediction variable. The hypothesis is that individuals will perform the dumbbell curves in slightly different ways. Here are the results:
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+colnames <- names(training)
+colcounts <- colSums(training > 0 | training <0)
+xnam <- colnames[2]
+for(i in 8:10) {
+        if (colcounts[i]>11000 & !is.na(colcounts[i])){
+                xnam <- paste(xnam," + ",colnames[i])
+        }
+        
+}
+myformula2 <- as.formula(paste("classe ~ ",xnam))
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
+```
+
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+set.seed(123)
+model2 <- train(myformula2,model="rf",data=training,trcontrol=control)
+pred <- predict(model2,testing)
+```
+
+```{r}
+myformula2
+
+```
+
+```{r,eval=FALSE,warning=FALSE,message=FALSE}
+set.seed(123)
+model2 <- train(myformula2,model="rf",data=training,trcontrol=control)
+pred <- predict(model2,testing)
+table(pred,testing$classe)
+```
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+table(pred,testing$classe)
+```
+
+The accuracy of this second model is 86.8%. As expected, there is a slight accuracy improvement from Model 1 due to the inclusion of the subject variable.
+
+## Approach 3: All Locations and User
+
+Models 1 and 2 use data from only one location -- the belt. By including roll, pitch and yaw data from the other three locations (arm, forearm and dumbbell), we would expect to see significant accuracy improvements. Here is the model and resulting confusion matrix:
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+colnames <- names(training)
+colcounts <- colSums(training > 0 | training <0)
+xnam <- colnames[2]
+for(i in c(8:10,46:48,84:86,122:124)) {
+        if (colcounts[i]>11000 & !is.na(colcounts[i])){
+                xnam <- paste(xnam," + ",colnames[i])
+        }
+        
+}
+myformula3 <- as.formula(paste("classe ~ ",xnam))
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
+```
+
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+set.seed(123)
+model3 <- train(myformula3,model="rf",data=training,trcontrol=control)
+pred <- predict(model3,testing)
+```
+
+```{r}
+myformula3
+
+```
+
+```{r,eval=FALSE,warning=FALSE,message=FALSE}
+set.seed(123)
+model3 <- train(myformula3,model="rf",data=training,trcontrol=control)
+pred <- predict(model3,testing)
+table(pred,testing$classe)
+```
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+table(pred,testing$classe)
+```
+
+
+This third model has an accuracy of 98.3%, a significant improvement. This model was used to predict the 20 data lines for the quiz and scored 20/20.
+
+## Conclusion
+The models developed for this assignment rely on a small fraction of the possible predictor variables. Only 13 of the possible 159 variables were used for the most complex model, but still achieve an accuracy of 98.3%. These results are sufficient for this assignment. A possible next step would be to test the importance of the other accelerometer data points. Other predictive model types other than random forests could also be tested.
